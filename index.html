@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chicago Neighborhood Explorer</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;background:#F8FAFC;color:#1E293B;min-height:100vh}
+
+/* ── Top bar ── */
+.topbar{display:flex;align-items:center;gap:12px;padding:12px 20px;background:#fff;border-bottom:1px solid #E2E8F0;position:sticky;top:0;z-index:1000;flex-wrap:wrap}
+.logo{font-size:16px;font-weight:600;color:#1E293B;white-space:nowrap}
+.logo span{color:#0D9488}
+.search-wrap{position:relative;flex:1;min-width:180px}
+.search-wrap i{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#94A3B8;font-size:16px}
+.search{width:100%;padding:8px 12px 8px 34px;border:1px solid #E2E8F0;border-radius:8px;font-size:13px;background:#F8FAFC;outline:none}
+.search:focus{border-color:#0D9488;background:#fff}
+.role-tabs,.view-tabs{display:flex;gap:4px}
+.tab-btn{font-size:12px;padding:6px 12px;border-radius:20px;border:1px solid #E2E8F0;background:#fff;color:#64748B;cursor:pointer;transition:all .15s;white-space:nowrap}
+.tab-btn.active{background:#F0FDF9;color:#0D9488;border-color:#99E6D8}
+.view-tabs{border:1px solid #E2E8F0;border-radius:8px;overflow:hidden;gap:0}
+.view-tabs .tab-btn{border:none;border-radius:0;border-right:1px solid #E2E8F0}
+.view-tabs .tab-btn:last-child{border-right:none}
+.view-tabs .tab-btn.active{background:#F1F5F9;color:#1E293B}
+
+/* ── Map color switcher ── */
+.map-switcher{display:flex;gap:6px;padding:10px 20px;background:#fff;border-bottom:1px solid #E2E8F0;align-items:center}
+.map-switcher label{font-size:12px;color:#64748B;font-weight:500;margin-right:4px}
+.msw-btn{font-size:12px;padding:5px 14px;border-radius:20px;border:1px solid #E2E8F0;background:#fff;color:#64748B;cursor:pointer;transition:all .15s}
+.msw-btn.active{font-weight:500}
+.msw-btn[data-mode="gap"].active{background:#FFF7F7;color:#993C1D;border-color:#F5C4B3}
+.msw-btn[data-mode="real"].active{background:#EFF6FF;color:#185FA5;border-color:#B5D4F4}
+.msw-btn[data-mode="perceived"].active{background:#FFFBEB;color:#854F0B;border-color:#FAC775}
+
+/* ── Main layout ── */
+.main{display:grid;grid-template-columns:1fr 360px;height:calc(100vh - 110px)}
+.map-container{position:relative}
+#map{width:100%;height:100%}
+
+/* ── Sidebar ── */
+.sidebar{background:#fff;border-left:1px solid #E2E8F0;display:flex;flex-direction:column;overflow:hidden}
+.sidebar-header{padding:12px 16px;border-bottom:1px solid #E2E8F0;flex-shrink:0}
+.sidebar-count{font-size:12px;color:#64748B}
+.card-list{flex:1;overflow-y:auto;padding:10px}
+.card-list.hidden{display:none}
+
+/* ── Neighborhood card ── */
+.ca-card{background:#fff;border:1px solid #E2E8F0;border-radius:12px;padding:12px 14px;cursor:pointer;margin-bottom:8px;transition:border-color .15s}
+.ca-card:hover{border-color:#CBD5E1}
+.ca-card.selected{border:1.5px solid #0D9488}
+.ca-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.ca-name{font-size:13px;font-weight:500;color:#1E293B;text-transform:capitalize}
+.tag{font-size:11px;padding:2px 8px;border-radius:10px;font-weight:500}
+.tag-over{background:#FAECE7;color:#993C1D}
+.tag-under{background:#E6F1FB;color:#185FA5}
+.tag-bal{background:#F1EFE8;color:#5F5E5A}
+.bar-row{display:flex;align-items:center;gap:6px;margin-bottom:4px}
+.bar-label{font-size:11px;color:#94A3B8;width:58px;flex-shrink:0}
+.bar-track{flex:1;height:5px;background:#F1F5F9;border-radius:3px;overflow:hidden}
+.bar-fill{height:100%;border-radius:3px;transition:width .3s}
+.bar-num{font-size:11px;color:#94A3B8;width:28px;text-align:right}
+
+/* ── Detail panel ── */
+.detail-panel{background:#fff;border-top:1px solid #E2E8F0;flex-shrink:0;max-height:55%;overflow-y:auto;display:none}
+.detail-panel.open{display:block}
+.dp-inner{padding:16px}
+.dp-top{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px}
+.dp-name{font-size:17px;font-weight:600;color:#1E293B;text-transform:capitalize}
+.dp-close{background:none;border:1px solid #E2E8F0;border-radius:8px;width:28px;height:28px;cursor:pointer;color:#94A3B8;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
+.score-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px}
+.score-card{background:#F8FAFC;border-radius:8px;padding:10px;text-align:center}
+.sc-lbl{font-size:10px;color:#94A3B8;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px}
+.sc-val{font-size:20px;font-weight:600;color:#1E293B}
+.verdict{background:#F8FAFC;border-radius:8px;padding:10px 12px;font-size:12px;color:#64748B;line-height:1.65;margin-bottom:12px}
+.detail-rows{border-top:1px solid #F1F5F9;padding-top:10px;margin-bottom:12px}
+.dr{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid #F8FAFC;font-size:13px}
+.dr:last-child{border-bottom:none}
+.dr-lbl{color:#64748B;display:flex;align-items:center;gap:6px}
+.dr-val{font-weight:500;color:#1E293B}
+.cmp-section{background:#F8FAFC;border-radius:8px;padding:10px 12px}
+.cmp-title{font-size:12px;color:#64748B;margin-bottom:8px;font-weight:500}
+.cmp-select{width:100%;padding:7px 10px;border:1px solid #E2E8F0;border-radius:8px;font-size:12px;background:#fff;color:#1E293B;outline:none}
+.cmp-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.cmp-col{background:#fff;border:1px solid #E2E8F0;border-radius:8px;padding:10px}
+.cmp-col-name{font-size:12px;font-weight:500;color:#1E293B;margin-bottom:8px;text-transform:capitalize;border-bottom:1px solid #F1F5F9;padding-bottom:6px}
+.cmp-row{display:flex;justify-content:space-between;font-size:11px;padding:3px 0;color:#64748B}
+.cmp-row span:last-child{font-weight:500;color:#1E293B}
+
+/* ── Map popup ── */
+.leaflet-popup-content-wrapper{border-radius:12px!important;box-shadow:0 4px 20px rgba(0,0,0,0.12)!important;border:1px solid #E2E8F0!important;padding:0!important}
+.leaflet-popup-content{margin:0!important;width:200px!important}
+.popup-inner{padding:14px}
+.popup-name{font-size:14px;font-weight:600;color:#1E293B;margin-bottom:4px;text-transform:capitalize}
+.popup-rows{margin:8px 0}
+.popup-row{display:flex;justify-content:space-between;font-size:12px;color:#64748B;padding:2px 0}
+.popup-row span:last-child{font-weight:500;color:#1E293B}
+.popup-btn{width:100%;padding:7px;font-size:12px;border:1px solid #E2E8F0;border-radius:8px;background:#F8FAFC;color:#1E293B;cursor:pointer;margin-top:8px}
+.popup-btn:hover{background:#F1F5F9}
+
+/* ── Legend ── */
+.map-legend{position:absolute;bottom:24px;left:12px;z-index:1000;background:#fff;border:1px solid #E2E8F0;border-radius:10px;padding:10px 14px;font-size:12px}
+.leg-title{color:#64748B;font-weight:500;margin-bottom:6px}
+.leg-row{display:flex;align-items:center;gap:7px;color:#64748B;margin-bottom:4px}
+.leg-row:last-child{margin-bottom:0}
+.leg-swatch{width:12px;height:12px;border-radius:50%;flex-shrink:0}
+.leg-gradient{width:100px;height:10px;border-radius:5px;margin-top:4px;margin-bottom:2px}
+.leg-ends{display:flex;justify-content:space-between;font-size:11px;color:#94A3B8}
+
+/* ── No results ── */
+.no-results{text-align:center;padding:40px 20px;color:#94A3B8;font-size:13px}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:#E2E8F0;border-radius:2px}
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <div class="logo">Chicago <span>Neighborhood</span> Explorer</div>
+  <div class="search-wrap">
+    <i>🔍</i>
+    <input class="search" id="searchBox" placeholder="Search neighborhood..." oninput="filterCards()">
+  </div>
+  <div class="role-tabs" id="roleTabs">
+    <button class="tab-btn active" data-role="all" onclick="setRole('all')">All info</button>
+    <button class="tab-btn" data-role="resident" onclick="setRole('resident')">🏠 Resident</button>
+    <button class="tab-btn" data-role="investor" onclick="setRole('investor')">💼 Investor</button>
+  </div>
+  <div class="view-tabs" id="viewTabs">
+    <button class="tab-btn active" data-view="map" onclick="setView('map')">🗺 Map</button>
+    <button class="tab-btn" data-view="cards" onclick="setView('cards')">⊞ Cards</button>
+  </div>
+</div>
+
+<!-- MAP COLOR SWITCHER -->
+<div class="map-switcher" id="mapSwitcher">
+  <label>Color by:</label>
+  <button class="msw-btn active" data-mode="gap" onclick="setColorMode('gap')">Gap (Perceived − Real)</button>
+  <button class="msw-btn" data-mode="real" onclick="setColorMode('real')">Real Score</button>
+  <button class="msw-btn" data-mode="perceived" onclick="setColorMode('perceived')">Perceived Score</button>
+</div>
+
+<!-- MAIN -->
+<div class="main" id="mainLayout">
+  <div class="map-container" id="mapContainer">
+    <div id="map"></div>
+    <div class="map-legend" id="mapLegend"></div>
+  </div>
+
+  <div class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-count" id="sidebarCount">76 neighborhoods</div>
+    </div>
+    <div class="card-list" id="cardList"></div>
+    <div class="detail-panel" id="detailPanel">
+      <div class="dp-inner">
+        <div class="dp-top">
+          <div>
+            <div class="dp-name" id="dpName"></div>
+            <span class="tag" id="dpTag"></span>
+          </div>
+          <button class="dp-close" onclick="closeDetail()">✕</button>
+        </div>
+        <div class="score-grid">
+          <div class="score-card"><div class="sc-lbl">Real Score</div><div class="sc-val" id="dpReal"></div></div>
+          <div class="score-card"><div class="sc-lbl">Perceived</div><div class="sc-val" id="dpPerc"></div></div>
+          <div class="score-card"><div class="sc-lbl">Gap</div><div class="sc-val" id="dpGap"></div></div>
+        </div>
+        <div class="verdict" id="dpVerdict"></div>
+        <div class="detail-rows" id="dpRows"></div>
+        <div class="cmp-section">
+          <div class="cmp-title">Compare with another neighborhood</div>
+          <select class="cmp-select" id="cmpSelect" onchange="runCompare()">
+            <option value="">— select to compare —</option>
+          </select>
+          <div id="cmpGrid"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════════
+// DATA — paste your real master_table data here
+// Format: {n, real, perc, gap, income, home, crime, yelp, biz}
+// ══════════════════════════════════════════════════════════
+const DATA = [
+  {n:"ROGERS PARK",lat:42.0083,lng:-87.6644,real:0.2762,perc:0.5796,gap:0.3034,income:37500,home:407773,crime:0.6727,yelp:0.5639,biz:0.4528},
+  {n:"WEST RIDGE",lat:41.9986,lng:-87.6872,real:0.2852,perc:0.6158,gap:0.3306,income:37500,home:435645,crime:0.7063,yelp:0.6235,biz:0.4601},
+  {n:"UPTOWN",lat:41.9734,lng:-87.6554,real:0.351,perc:0.5993,gap:0.2483,income:62500,home:611573,crime:0.6741,yelp:0.6088,biz:0.4664},
+  {n:"LINCOLN SQUARE",lat:41.9681,lng:-87.685,real:0.294,perc:0.5967,gap:0.3027,income:12500,home:997631,crime:0.8548,yelp:0.3912,biz:0.4714},
+  {n:"NORTH CENTER",lat:41.9567,lng:-87.665,real:0.4466,perc:0.7807,gap:0.3341,income:38073,home:1181982,crime:0.9098,yelp:0.8567,biz:0.4677},
+  {n:"LAKE VIEW",lat:41.9434,lng:-87.6432,real:0.4346,perc:0.6292,gap:0.1946,income:40212,home:1121081,crime:0.506,yelp:0.7403,biz:0.6708},
+  {n:"LINCOLN PARK",lat:41.9238,lng:-87.6376,real:0.5238,perc:0.6646,gap:0.1408,income:39237,home:1408146,crime:0.7066,yelp:0.6522,biz:0.6147},
+  {n:"NEAR NORTH SIDE",lat:41.9,lng:-87.6344,real:0.4198,perc:0.5952,gap:0.1754,income:31452,home:1173727,crime:0.1303,yelp:0.964,biz:0.8227},
+  {n:"EDISON PARK",lat:41.9856,lng:-87.8136,real:0.3533,perc:0.6207,gap:0.2674,income:75927,home:467536,crime:1.0,yelp:0.4112,biz:0.307},
+  {n:"NORWOOD PARK",lat:41.9856,lng:-87.7872,real:0.1654,perc:0.5915,gap:0.4261,income:26441,home:442878,crime:0.9211,yelp:0.3794,biz:0.361},
+  {n:"JEFFERSON PARK",lat:41.9706,lng:-87.7686,real:0.1977,perc:0.6238,gap:0.4261,income:41012,home:378987,crime:0.9356,yelp:0.4566,biz:0.3592},
+  {n:"FOREST GLEN",lat:41.9806,lng:-87.7536,real:0.3348,perc:0.5833,gap:0.2485,income:72966,home:443810,crime:0.978,yelp:0.3686,biz:0.2525},
+  {n:"NORTH PARK",lat:41.9806,lng:-87.7186,real:0.2294,perc:0.6022,gap:0.3728,income:40153,home:486681,crime:0.9435,yelp:0.359,biz:0.3967},
+  {n:"ALBANY PARK",lat:41.9681,lng:-87.7236,real:0.2798,perc:0.5607,gap:0.2809,income:37500,home:418817,crime:0.8284,yelp:0.3322,biz:0.4522},
+  {n:"PORTAGE PARK",lat:41.9567,lng:-87.7636,real:0.0946,perc:0.5691,gap:0.4745,income:12500,home:380658,crime:0.7601,yelp:0.464,biz:0.4106},
+  {n:"IRVING PARK",lat:41.9534,lng:-87.7236,real:0.374,perc:0.535,gap:0.161,income:37500,home:710115,crime:0.8035,yelp:0.3216,biz:0.404},
+  {n:"DUNNING",lat:41.9456,lng:-87.7986,real:0.0836,perc:0.5821,gap:0.4985,income:12500,home:346591,crime:0.8875,yelp:0.3754,biz:0.3828},
+  {n:"MONTCLARE",lat:41.9206,lng:-87.7836,real:0.2634,perc:0.599,gap:0.3356,income:64304,home:320361,crime:0.9682,yelp:0.3613,biz:0.341},
+  {n:"BELMONT CRAGIN",lat:41.9206,lng:-87.7636,real:0.2514,perc:0.4921,gap:0.2407,income:37500,home:331016,crime:0.6514,yelp:0.3537,biz:0.4309},
+  {n:"HERMOSA",lat:41.9206,lng:-87.7236,real:0.1835,perc:0.626,gap:0.4425,income:44476,home:296019,crime:0.9046,yelp:0.5297,biz:0.3149},
+  {n:"AVONDALE",lat:41.9406,lng:-87.7036,real:0.1505,perc:0.6566,gap:0.5061,income:12500,home:553819,crime:0.8448,yelp:0.5923,biz:0.4454},
+  {n:"LOGAN SQUARE",lat:41.9206,lng:-87.7036,real:0.4329,perc:0.5994,gap:0.1665,income:37500,home:892589,crime:0.6255,yelp:0.5893,biz:0.5719},
+  {n:"HUMBOLDT PARK",lat:41.9006,lng:-87.7236,real:0.2593,perc:0.444,gap:0.1847,income:37500,home:355422,crime:0.4797,yelp:0.4738,biz:0.3453},
+  {n:"WEST TOWN",lat:41.8906,lng:-87.6736,real:0.4308,perc:0.5995,gap:0.1687,income:37500,home:886195,crime:0.3971,yelp:0.8025,biz:0.6391},
+  {n:"AUSTIN",lat:41.8956,lng:-87.7636,real:0.2326,perc:0.2223,gap:-0.0103,income:37500,home:272835,crime:0.0,yelp:0.3564,biz:0.3901},
+  {n:"WEST GARFIELD PARK",lat:41.8806,lng:-87.7336,real:0.2434,perc:0.4514,gap:0.208,income:71678,home:175157,crime:0.7086,yelp:0.256,biz:0.3134},
+  {n:"EAST GARFIELD PARK",lat:41.8806,lng:-87.7036,real:0.37,perc:0.5681,gap:0.1981,income:102688,home:218228,crime:0.7026,yelp:0.6666,biz:0.2151},
+  {n:"NEAR WEST SIDE",lat:41.8756,lng:-87.6736,real:0.6818,perc:0.4856,gap:-0.1962,income:62500,home:1635194,crime:0.1921,yelp:0.6983,biz:0.6573},
+  {n:"NORTH LAWNDALE",lat:41.8606,lng:-87.7236,real:0.5329,perc:0.4331,gap:-0.0998,income:150000,home:189751,crime:0.4753,yelp:0.4696,biz:0.3145},
+  {n:"SOUTH LAWNDALE",lat:41.8406,lng:-87.7136,real:0.2088,perc:0.5145,gap:0.3057,income:37500,home:199386,crime:0.6858,yelp:0.4067,biz:0.3915},
+  {n:"LOWER WEST SIDE",lat:41.8506,lng:-87.6736,real:0.1047,perc:0.5875,gap:0.4828,income:12500,home:412078,crime:0.7785,yelp:0.5196,biz:0.3768},
+  {n:"LOOP",lat:41.8827,lng:-87.6278,real:0.5766,perc:0.577,gap:0.0004,income:41747,home:1543369,crime:0.32,yelp:0.78,biz:0.7039},
+  {n:"NEAR SOUTH SIDE",lat:41.8606,lng:-87.6278,real:0.3494,perc:0.7435,gap:0.3941,income:53147,home:712011,crime:0.8105,yelp:0.892,biz:0.4283},
+  {n:"ARMOUR SQUARE",lat:41.8456,lng:-87.6328,real:0.3012,perc:0.7487,gap:0.4475,income:69308,home:381046,crime:0.9317,yelp:0.631,biz:0.6205},
+  {n:"DOUGLAS",lat:41.8356,lng:-87.6178,real:0.2868,perc:0.7008,gap:0.414,income:73307,home:291598,crime:0.784,yelp:0.8598,biz:0.3449},
+  {n:"OAKLAND",lat:41.8256,lng:-87.5978,real:0.2832,perc:0.5654,gap:0.2822,income:59483,home:435811,crime:0.9528,yelp:0.4342,biz:0.1292},
+  {n:"FULLER PARK",lat:41.8106,lng:-87.6278,real:0.1372,perc:0.5895,gap:0.4523,income:46541,home:129654,crime:0.9678,yelp:0.3143,biz:0.3695},
+  {n:"GRAND BOULEVARD",lat:41.8106,lng:-87.6078,real:0.0814,perc:0.5435,gap:0.4621,income:34888,home:400000,crime:0.7236,yelp:0.4838,biz:0.339},
+  {n:"KENWOOD",lat:41.8156,lng:-87.5928,real:0.4622,perc:0.614,gap:0.1518,income:55487,home:1034422,crime:0.8624,yelp:0.5322,biz:0.3309},
+  {n:"WASHINGTON PARK",lat:41.7956,lng:-87.6178,real:0.2768,perc:0.5746,gap:0.2978,income:73500,home:258356,crime:0.8264,yelp:0.3584,biz:0.4743},
+  {n:"HYDE PARK",lat:41.7956,lng:-87.5878,real:0.4092,perc:0.6232,gap:0.214,income:66252,home:749506,crime:0.8346,yelp:0.4473,biz:0.5311},
+  {n:"WOODLAWN",lat:41.7756,lng:-87.5978,real:0.4338,perc:0.5082,gap:0.0744,income:107257,home:364164,crime:0.7328,yelp:0.3548,biz:0.3635},
+  {n:"SOUTH SHORE",lat:41.7606,lng:-87.5728,real:0.2013,perc:0.3121,gap:0.1108,income:37500,home:175991,crime:0.3307,yelp:0.2878,biz:0.3163},
+  {n:"CHATHAM",lat:41.7506,lng:-87.6228,real:0.2048,perc:0.4102,gap:0.2054,income:62500,home:159419,crime:0.5284,yelp:0.3089,biz:0.363},
+  {n:"AVALON PARK",lat:41.7406,lng:-87.5878,real:0.2698,perc:0.549,gap:0.2792,income:79626,home:167657,crime:0.9294,yelp:0.3058,biz:0.2808},
+  {n:"SOUTH CHICAGO",lat:41.7356,lng:-87.5578,real:0.2024,perc:0.4402,gap:0.2378,income:62500,home:151916,crime:0.6804,yelp:0.2431,biz:0.332},
+  {n:"BURNSIDE",lat:41.7206,lng:-87.6028,real:0.2984,perc:0.5407,gap:0.2423,income:88295,home:158599,crime:0.9972,yelp:0.251,biz:0.2157},
+  {n:"CALUMET HEIGHTS",lat:41.7206,lng:-87.5778,real:0.3241,perc:0.5345,gap:0.2104,income:92709,home:188436,crime:0.9095,yelp:0.268,biz:0.3075},
+  {n:"ROSELAND",lat:41.7006,lng:-87.6228,real:0.1881,perc:0.3743,gap:0.1862,income:37500,home:135070,crime:0.5455,yelp:0.2231,biz:0.3119},
+  {n:"PULLMAN",lat:41.7006,lng:-87.6078,real:0.2382,perc:0.464,gap:0.2258,income:72014,home:155731,crime:0.9379,yelp:0.0499,biz:0.2855},
+  {n:"SOUTH DEERING",lat:41.6956,lng:-87.5778,real:0.2017,perc:0.4681,gap:0.2664,income:63660,home:136730,crime:0.8689,yelp:0.1057,biz:0.3343},
+  {n:"EAST SIDE",lat:41.7056,lng:-87.5428,real:0.3237,perc:0.5236,gap:0.1999,income:92412,home:190465,crime:0.9171,yelp:0.2165,biz:0.3238},
+  {n:"WEST PULLMAN",lat:41.6756,lng:-87.6378,real:0.1977,perc:0.4568,gap:0.2591,income:62500,home:137494,crime:0.7344,yelp:0.234,biz:0.3244},
+  {n:"RIVERDALE",lat:41.6506,lng:-87.6178,real:0.0836,perc:0.4894,gap:0.4058,income:35509,home:88102,crime:0.9224,yelp:0.0965,biz:0.3468},
+  {n:"HEGEWISCH",lat:41.6506,lng:-87.5528,real:0.3056,perc:0.6141,gap:0.3085,income:87980,home:184287,crime:0.9643,yelp:0.3214,biz:0.4635},
+  {n:"GARFIELD RIDGE",lat:41.7956,lng:-87.7778,real:0.0715,perc:0.5894,gap:0.5179,income:12500,home:309336,crime:0.8446,yelp:0.3731,biz:0.484},
+  {n:"ARCHER HEIGHTS",lat:41.8156,lng:-87.7278,real:0.321,perc:0.5727,gap:0.2517,income:84373,home:272515,crime:0.9385,yelp:0.3031,biz:0.3648},
+  {n:"BRIGHTON PARK",lat:41.8256,lng:-87.6978,real:0.2246,perc:0.533,gap:0.3084,income:37500,home:248203,crime:0.8436,yelp:0.3188,biz:0.3359},
+  {n:"MCKINLEY PARK",lat:41.8306,lng:-87.6728,real:0.2436,perc:0.6036,gap:0.36,income:60052,home:306671,crime:0.9461,yelp:0.4249,biz:0.3056},
+  {n:"NEW CITY",lat:41.8406,lng:-87.6528,real:0.1946,perc:0.6616,gap:0.467,income:37500,home:155019,crime:0.8934,yelp:0.6199,biz:0.3489},
+  {n:"WEST ELSDON",lat:41.7956,lng:-87.7378,real:0.2394,perc:0.4386,gap:0.1992,income:62614,home:264852,crime:0.6898,yelp:0.2786,biz:0.2605},
+  {n:"GAGE PARK",lat:41.7856,lng:-87.7078,real:0.2142,perc:0.5595,gap:0.3453,income:37500,home:216060,crime:0.9425,yelp:0.2918,biz:0.3215},
+  {n:"CLEARING",lat:41.7756,lng:-87.7778,real:0.1343,perc:0.5671,gap:0.4328,income:30881,home:296757,crime:0.839,yelp:0.4094,biz:0.3528},
+  {n:"WEST LAWN",lat:41.7756,lng:-87.7078,real:0.0563,perc:0.5603,gap:0.504,income:12500,home:262289,crime:0.9332,yelp:0.2907,biz:0.3412},
+  {n:"CHICAGO LAWN",lat:41.7656,lng:-87.6878,real:0.214,perc:0.5232,gap:0.3092,income:37500,home:215378,crime:0.8762,yelp:0.2191,biz:0.3843},
+  {n:"WEST ENGLEWOOD",lat:41.7756,lng:-87.6578,real:0.3296,perc:0.3981,gap:0.0685,income:99590,home:128109,crime:0.607,yelp:0.1843,biz:0.3633},
+  {n:"ENGLEWOOD",lat:41.7756,lng:-87.6378,real:0.2986,perc:0.4361,gap:0.1375,income:93132,home:104696,crime:0.6394,yelp:0.292,biz:0.3126},
+  {n:"GREATER GRAND CROSSING",lat:41.7606,lng:-87.6128,real:0.5206,perc:0.4547,gap:-0.0659,income:150000,home:151823,crime:0.6165,yelp:0.3165,biz:0.3892},
+  {n:"ASHBURN",lat:41.7456,lng:-87.7078,real:0.046,perc:0.3999,gap:0.3539,income:12500,home:230214,crime:0.5036,yelp:0.2642,biz:0.424},
+  {n:"AUBURN GRESHAM",lat:41.7456,lng:-87.6528,real:0.1969,perc:0.5076,gap:0.3107,income:37500,home:162473,crime:0.8389,yelp:0.2634,biz:0.3195},
+  {n:"BEVERLY",lat:41.7206,lng:-87.6728,real:0.2227,perc:0.3814,gap:0.1587,income:43526,home:428212,crime:0.4882,yelp:0.2835,biz:0.3476},
+  {n:"WASHINGTON HEIGHTS",lat:41.7006,lng:-87.6628,real:0.0764,perc:0.5571,gap:0.4807,income:24911,home:184661,crime:0.9478,yelp:0.302,biz:0.289},
+  {n:"MOUNT GREENWOOD",lat:41.6956,lng:-87.7028,real:0.2911,perc:0.5016,gap:0.2105,income:74289,home:293454,crime:0.7741,yelp:0.3048,biz:0.3411},
+  {n:"MORGAN PARK",lat:41.6956,lng:-87.6678,real:0.1192,perc:0.5903,gap:0.4711,income:35252,home:201060,crime:0.9795,yelp:0.2915,biz:0.3858},
+  {n:"OHARE",lat:41.9806,lng:-87.9086,real:0.1736,perc:0.7032,gap:0.5296,income:29235,home:437025,crime:0.8683,yelp:0.7609,biz:0.3584},
+  {n:"EDGEWATER",lat:41.9906,lng:-87.6594,real:0.3456,perc:0.701,gap:0.3554,income:40129,home:846745,crime:0.8853,yelp:0.525,biz:0.6526}
+];
+
+// ══════════════════════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════════════════════
+let currentRole = 'all';
+let currentView = 'map';
+let currentColorMode = 'gap';
+let selectedCA = null;
+let map, markers = {};
+let filtered = [...DATA];
+
+// ══════════════════════════════════════════════════════════
+// HELPERS
+// ══════════════════════════════════════════════════════════
+function fmt(v){ return v.toFixed(2); }
+function fmtDollar(v){ return '$' + Math.round(v).toLocaleString(); }
+function fmtPct(v){ return Math.round(v*100) + '%'; }
+
+function tagInfo(gap){
+  if(gap > 0.15) return {cls:'tag-over', label:'Overperceived'};
+  if(gap < -0.05) return {cls:'tag-under', label:'Underperceived'};
+  return {cls:'tag-bal', label:'Balanced'};
+}
+
+function verdictText(d){
+  const name = d.n.toLowerCase().replace(/\b\w/g,c=>c.toUpperCase());
+  if(d.gap > 0.15) return `${name} feels more expensive than its economic data suggests. Environmental signals — dining quality, safety, and commercial activity — create a premium impression that outpaces income and home value indicators.`;
+  if(d.gap < -0.05) return `${name} is more economically expensive than it appears. High property values or income levels have not yet translated into the kind of visible amenities that drive perceived expensiveness.`;
+  return `${name} is well-calibrated. Its perceived image closely matches its actual economic conditions, suggesting a stable alignment between environment and market.`;
+}
+
+function roleFields(d){
+  const all = [
+    {icon:'🏠', label:'Est. median income', val: fmtDollar(d.income)},
+    {icon:'🏢', label:'Avg home value', val: fmtDollar(d.home)},
+    {icon:'🛡', label:'Safety score', val: fmtPct(d.crime)},
+    {icon:'🍽', label:'Dining quality (Yelp)', val: fmtPct(d.yelp)},
+    {icon:'💼', label:'Business score', val: fmtPct(d.biz)},
+  ];
+  if(currentRole==='resident') return [all[0],all[1],all[2]];
+  if(currentRole==='investor') return [all[0],all[1],all[4],
+    {icon:'📊', label:'Opportunity gap', val: (d.gap>=0?'+':'')+fmt(d.gap)}];
+  return all;
+}
+
+// ══════════════════════════════════════════════════════════
+// COLOR SCALES
+// ══════════════════════════════════════════════════════════
+function interpolate(c1,c2,t){
+  const h=(hex)=>parseInt(hex,16);
+  const r1=h(c1.slice(0,2)),g1=h(c1.slice(2,4)),b1=h(c1.slice(4,6));
+  const r2=h(c2.slice(0,2)),g2=h(c2.slice(2,4)),b2=h(c2.slice(4,6));
+  const r=Math.round(r1+(r2-r1)*t),g=Math.round(g1+(g2-g1)*t),b=Math.round(b1+(b2-b1)*t);
+  return '#'+[r,g,b].map(x=>x.toString(16).padStart(2,'0')).join('');
+}
+
+function getColor(d){
+  if(currentColorMode==='gap'){
+    const g=d.gap;
+    if(g<-0.05) return interpolate('185FA5','93C5FD',Math.max(0,Math.min(1,(g+0.25)/0.25)));
+    if(g>0.15)  return interpolate('FCA08A','993C1D',Math.max(0,Math.min(1,(g-0.15)/0.4)));
+    return '#CBD5E1';
+  }
+  if(currentColorMode==='real'){
+    const t=Math.max(0,Math.min(1,d.real/0.7));
+    return interpolate('DBEAFE','185FA5',t);
+  }
+  const t=Math.max(0,Math.min(1,d.perc/0.85));
+  return interpolate('FEF3C7','854F0B',t);
+}
+
+// ══════════════════════════════════════════════════════════
+// MAP
+// ══════════════════════════════════════════════════════════
+function initMap(){
+  map = L.map('map',{center:[41.85,-87.68],zoom:11,zoomControl:true});
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{
+    attribution:'&copy; OpenStreetMap &copy; CARTO',maxZoom:19
+  }).addTo(map);
+
+  DATA.forEach(d=>{
+    const marker = L.circleMarker([d.lat,d.lng],{
+      radius:10, fillColor:getColor(d), color:'#fff',
+      weight:1.5, opacity:1, fillOpacity:0.85
+    }).addTo(map);
+
+    marker.on('click',()=>openDetail(d));
+    marker.bindPopup(makePopupHTML(d),{maxWidth:220});
+    markers[d.n]=marker;
+  });
+
+  updateLegend();
+}
+
+function makePopupHTML(d){
+  const t=tagInfo(d.gap);
+  const name=d.n.toLowerCase().replace(/\b\w/g,c=>c.toUpperCase());
+  return `<div class="popup-inner">
+    <div class="popup-name">${name}</div>
+    <span class="tag ${t.cls}">${t.label}</span>
+    <div class="popup-rows">
+      <div class="popup-row"><span>Real score</span><span>${fmt(d.real)}</span></div>
+      <div class="popup-row"><span>Perceived</span><span>${fmt(d.perc)}</span></div>
+      <div class="popup-row"><span>Gap</span><span style="color:${d.gap>0.1?'#D85A30':d.gap<-0.05?'#378ADD':'#888'}">${(d.gap>=0?'+':'')+fmt(d.gap)}</span></div>
+    </div>
+    <button class="popup-btn" onclick="openDetailByName('${d.n}')">View full details →</button>
+  </div>`;
+}
+
+function updateMarkerColors(){
+  DATA.forEach(d=>{
+    if(markers[d.n]){
+      markers[d.n].setStyle({fillColor:getColor(d)});
+    }
+  });
+  updateLegend();
+}
+
+function updateLegend(){
+  const el=document.getElementById('mapLegend');
+  if(currentColorMode==='gap'){
+    el.innerHTML=`<div class="leg-title">Gap score</div>
+      <div class="leg-row"><div class="leg-swatch" style="background:#185FA5"></div>Underperceived (Real > Perceived)</div>
+      <div class="leg-row"><div class="leg-swatch" style="background:#CBD5E1"></div>Balanced</div>
+      <div class="leg-row"><div class="leg-swatch" style="background:#993C1D"></div>Overperceived (Perceived > Real)</div>`;
+  } else if(currentColorMode==='real'){
+    el.innerHTML=`<div class="leg-title">Real score</div>
+      <div class="leg-gradient" style="background:linear-gradient(to right,#DBEAFE,#185FA5)"></div>
+      <div class="leg-ends"><span>Low</span><span>High</span></div>`;
+  } else {
+    el.innerHTML=`<div class="leg-title">Perceived score</div>
+      <div class="leg-gradient" style="background:linear-gradient(to right,#FEF3C7,#854F0B)"></div>
+      <div class="leg-ends"><span>Low</span><span>High</span></div>`;
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+// CARDS
+// ══════════════════════════════════════════════════════════
+function renderCards(){
+  const list=document.getElementById('cardList');
+  document.getElementById('sidebarCount').textContent=`${filtered.length} neighborhoods`;
+  if(filtered.length===0){
+    list.innerHTML='<div class="no-results">No neighborhoods found</div>';
+    return;
+  }
+  list.innerHTML=filtered.map(d=>{
+    const t=tagInfo(d.gap);
+    const name=d.n.toLowerCase().replace(/\b\w/g,c=>c.toUpperCase());
+    const sel=selectedCA&&selectedCA.n===d.n?' selected':'';
+    return `<div class="ca-card${sel}" onclick="openDetailByName('${d.n}')">
+      <div class="ca-header">
+        <span class="ca-name">${name}</span>
+        <span class="tag ${t.cls}">${t.label}</span>
+      </div>
+      <div class="bar-row"><span class="bar-label">Real</span>
+        <div class="bar-track"><div class="bar-fill" style="width:${d.real*100}%;background:#378ADD"></div></div>
+        <span class="bar-num">${fmt(d.real)}</span></div>
+      <div class="bar-row"><span class="bar-label">Perceived</span>
+        <div class="bar-track"><div class="bar-fill" style="width:${d.perc*100}%;background:#D85A30"></div></div>
+        <span class="bar-num">${fmt(d.perc)}</span></div>
+    </div>`;
+  }).join('');
+}
+
+// ══════════════════════════════════════════════════════════
+// DETAIL PANEL
+// ══════════════════════════════════════════════════════════
+function openDetailByName(name){
+  const d=DATA.find(x=>x.n===name);
+  if(d) openDetail(d);
+}
+
+function openDetail(d){
+  selectedCA=d;
+  const t=tagInfo(d.gap);
+  const name=d.n.toLowerCase().replace(/\b\w/g,c=>c.toUpperCase());
+
+  document.getElementById('dpName').textContent=name;
+  const tagEl=document.getElementById('dpTag');
+  tagEl.className='tag '+t.cls;
+  tagEl.textContent=t.label;
+
+  document.getElementById('dpReal').textContent=fmt(d.real);
+  document.getElementById('dpPerc').textContent=fmt(d.perc);
+  const gapEl=document.getElementById('dpGap');
+  gapEl.textContent=(d.gap>=0?'+':'')+fmt(d.gap);
+  gapEl.style.color=d.gap>0.1?'#D85A30':d.gap<-0.05?'#378ADD':'#1E293B';
+
+  document.getElementById('dpVerdict').textContent=verdictText(d);
+
+  const fields=roleFields(d);
+  document.getElementById('dpRows').innerHTML=fields.map(f=>
+    `<div class="dr"><span class="dr-lbl">${f.icon} ${f.label}</span><span class="dr-val">${f.val}</span></div>`
+  ).join('');
+
+  const sel=document.getElementById('cmpSelect');
+  sel.innerHTML='<option value="">— select to compare —</option>'+
+    DATA.filter(x=>x.n!==d.n).map(x=>{
+      const nm=x.n.toLowerCase().replace(/\b\w/g,c=>c.toUpperCase());
+      return `<option value="${x.n}">${nm}</option>`;
+    }).join('');
+  document.getElementById('cmpGrid').innerHTML='';
+
+  document.getElementById('detailPanel').classList.add('open');
+  renderCards();
+
+  // pan map to selected
+  if(map && currentView==='map'){
+    map.panTo([d.lat,d.lng],{animate:true});
+    if(markers[d.n]) markers[d.n].openPopup();
+  }
+}
+
+function closeDetail(){
+  selectedCA=null;
+  document.getElementById('detailPanel').classList.remove('open');
+  renderCards();
+}
+
+function runCompare(){
+  if(!selectedCA) return;
+  const val=document.getElementById('cmpSelect').value;
+  if(!val) return;
+  const b=DATA.find(x=>x.n===val);
+  const a=selectedCA;
+  const nameA=a.n.toLowerCase().replace(/\b\w/g,c=>c.toUpperCase());
+  const nameB=b.n.toLowerCase().replace(/\b\w/g,c=>c.toUpperCase());
+  const fields=[
+    {label:'Real score',fa:fmt(a.real),fb:fmt(b.real)},
+    {label:'Perceived',fa:fmt(a.perc),fb:fmt(b.perc)},
+    {label:'Gap',fa:(a.gap>=0?'+':'')+fmt(a.gap),fb:(b.gap>=0?'+':'')+fmt(b.gap)},
+    {label:'Income',fa:fmtDollar(a.income),fb:fmtDollar(b.income)},
+    {label:'Home value',fa:fmtDollar(a.home),fb:fmtDollar(b.home)},
+    {label:'Safety',fa:fmtPct(a.crime),fb:fmtPct(b.crime)},
+    {label:'Dining',fa:fmtPct(a.yelp),fb:fmtPct(b.yelp)},
+  ];
+  document.getElementById('cmpGrid').innerHTML=`<div class="cmp-grid">
+    <div class="cmp-col"><div class="cmp-col-name">${nameA}</div>
+      ${fields.map(f=>`<div class="cmp-row"><span>${f.label}</span><span>${f.fa}</span></div>`).join('')}
+    </div>
+    <div class="cmp-col"><div class="cmp-col-name">${nameB}</div>
+      ${fields.map(f=>`<div class="cmp-row"><span>${f.label}</span><span>${f.fb}</span></div>`).join('')}
+    </div>
+  </div>`;
+}
+
+// ══════════════════════════════════════════════════════════
+// CONTROLS
+// ══════════════════════════════════════════════════════════
+function setRole(r){
+  currentRole=r;
+  document.querySelectorAll('#roleTabs .tab-btn').forEach(b=>{
+    b.classList.toggle('active',b.dataset.role===r);
+  });
+  if(selectedCA) openDetail(selectedCA);
+}
+
+function setView(v){
+  currentView=v;
+  document.querySelectorAll('#viewTabs .tab-btn').forEach(b=>{
+    b.classList.toggle('active',b.dataset.view===v);
+  });
+  const mapContainer=document.getElementById('mapContainer');
+  const mapSwitcher=document.getElementById('mapSwitcher');
+  if(v==='map'){
+    mapContainer.style.display='block';
+    mapSwitcher.style.display='flex';
+    setTimeout(()=>map&&map.invalidateSize(),100);
+  } else {
+    mapContainer.style.display='none';
+    mapSwitcher.style.display='none';
+    document.getElementById('mainLayout').style.gridTemplateColumns='1fr 360px';
+  }
+}
+
+function setColorMode(m){
+  currentColorMode=m;
+  document.querySelectorAll('.msw-btn').forEach(b=>{
+    b.classList.toggle('active',b.dataset.mode===m);
+  });
+  updateMarkerColors();
+}
+
+function filterCards(){
+  const q=document.getElementById('searchBox').value.toLowerCase().trim();
+  filtered=q?DATA.filter(d=>d.n.toLowerCase().includes(q)):[...DATA];
+  renderCards();
+}
+
+// ══════════════════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════════════════
+window.addEventListener('load',()=>{
+  initMap();
+  renderCards();
+});
+</script>
+</body>
+</html>
